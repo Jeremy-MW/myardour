@@ -79,7 +79,7 @@ export RANLIB=${XPREFIX}-ranlib
 export DLLTOOL=${XPREFIX}-dlltool
 
 # Set optimization flags
-if grep -q optimize <<<"$ARDOURCFG"; then
+if echo "$ARDOURCFG" | grep -q optimize; then
     OPT=""
 else
     OPT=" -Og"

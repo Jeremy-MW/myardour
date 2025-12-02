@@ -28,6 +28,9 @@ on:
 env:
   ARDOUR_VERSION: '9.0-rc1'
 
+permissions:
+  contents: read
+
 jobs:
   build-windows:
     name: Build Ardour for Windows (${{ matrix.arch }})
@@ -69,7 +72,7 @@ jobs:
         id: cache-deps
         with:
           path: |
-            /home/ardour/win-stack-${{ matrix.warch }}
+            /home/ardour/win-stack-w64
             /var/tmp/winsrc
           key: ardour-win-deps-${{ matrix.arch }}-v2
           restore-keys: |

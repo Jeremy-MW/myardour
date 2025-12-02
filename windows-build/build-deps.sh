@@ -168,7 +168,7 @@ windres = '/usr/bin/${XPREFIX}-windres'
 pkgconfig = '/usr/bin/pkg-config'
 
 [properties]
-c_args = ['-I${PREFIX}/include', '-O2', '-mstackrealign', '-Werror=format=0']
+c_args = ['-I${PREFIX}/include', '-O2', '-mstackrealign']
 cpp_args = ['-I${PREFIX}/include', '-O2', '-mstackrealign', '-std=gnu++11']
 c_link_args = ['-L${PREFIX}/lib']
 cpp_link_args = ['-L${PREFIX}/lib']
@@ -187,7 +187,7 @@ EOF
 mesonbuild() {
     set -e
     meson build/ --cross-file ${BUILDD}/meson-cross.txt --prefix=$PREFIX --libdir=lib "$@"
-    ninja -C build install ${CONCURRENCY}
+    ninja -C build install $MAKEFLAGS
 }
 
 echo "[4/5] Building dependencies (this will take several hours)..."
@@ -305,7 +305,7 @@ autoconfbuild
 # freetype
 echo "Building: freetype..."
 src freetype-2.9 tar.gz http://download.savannah.gnu.org/releases/freetype/freetype-2.9.tar.gz
-autoconfbuild -with-harfbuzz=no
+autoconfbuild --with-harfbuzz=no
 
 # fontconfig
 echo "Building: fontconfig..."
@@ -352,7 +352,7 @@ mesonbuild -Dinternal_pcre=true
 # harfbuzz
 echo "Building: harfbuzz..."
 src harfbuzz-2.6.4 tar.xz https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-2.6.4.tar.xz
-autoconfbuild -without-icu --with-uniscribe
+autoconfbuild --without-icu --with-uniscribe
 
 # fribidi
 echo "Building: fribidi..."
@@ -366,7 +366,7 @@ mesonbuild -Dgir=false
 
 # atk
 echo "Building: atk..."
-src atk-2.14.0 tar.bz2 http://ftp.gnome.org/pub/GNOME/sources/atk/2.14/atk-2.14.0.tar.xz
+src atk-2.14.0 tar.xz http://ftp.gnome.org/pub/GNOME/sources/atk/2.14/atk-2.14.0.tar.xz
 autoconfbuild --disable-rebuilds
 
 # gdk-pixbuf
@@ -547,7 +547,7 @@ ed CMakeLists.txt << EOF
 0i
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_C_COMPILER ${XPREFIX}-gcc)
-set(CMAKE_CXX_COMPILER ${XPREFIX}-c++)
+set(CMAKE_CXX_COMPILER ${XPREFIX}-g++)
 set(CMAKE_RC_COMPILER ${XPREFIX}-windres)
 .
 wq
@@ -571,7 +571,7 @@ Name: TagLib
 Description: Audio meta-data library
 Requires:
 Version: 1.9.1
-Libs: -L\${libdir}/lib -ltag
+Libs: -L\${libdir} -ltag
 Cflags: -I\${includedir}/include/taglib
 EOF
 
