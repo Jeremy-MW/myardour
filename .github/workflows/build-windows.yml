@@ -1,0 +1,116 @@
+name: Build Ardour for Windows
+
+on:
+  push:
+    branches:
+      - main
+      - copilot/*
+    paths:
+      - 'windows-build/**'
+      - '.github/workflows/build-windows.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'windows-build/**'
+      - '.github/workflows/build-windows.yml'
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: 'Target architecture'
+        required: true
+        default: 'x86_64'
+        type: choice
+        options:
+          - x86_64
+          - i686
+
+env:
+  ARDOUR_VERSION: '9.0-rc1'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Ardour for Windows (${{ matrix.arch }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 480  # 8 hours - dependency build takes a while
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64]
+        include:
+          - arch: x86_64
+            warch: w64
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Build Environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            mingw-w64 g++-mingw-w64 gcc-mingw-w64 \
+            build-essential autoconf automake libtool pkg-config \
+            yasm nasm git cmake nsis wget curl ca-certificates \
+            rsync zip unzip gettext meson python3 python-is-python3 \
+            libglib2.0-dev ed subversion ocaml-nox gperf ccache
+          
+          # Configure MinGW for POSIX threads
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix || true
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix || true
+          sudo update-alternatives --set i686-w64-mingw32-gcc /usr/bin/i686-w64-mingw32-gcc-posix || true
+          sudo update-alternatives --set i686-w64-mingw32-g++ /usr/bin/i686-w64-mingw32-g++-posix || true
+
+      - name: Cache Dependency Stack
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            /home/ardour/win-stack-w64
+            /var/tmp/winsrc
+          key: ardour-win-deps-${{ matrix.arch }}-v2
+          restore-keys: |
+            ardour-win-deps-${{ matrix.arch }}-
+
+      - name: Build Dependency Stack
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          sudo mkdir -p /home/ardour
+          sudo chmod 777 /home/ardour
+          sudo mkdir -p /var/tmp/winsrc
+          sudo chmod 777 /var/tmp/winsrc
+          cd windows-build
+          sudo bash build-deps.sh ${{ matrix.arch }}
+
+      - name: Compile Ardour
+        run: |
+          cd windows-build
+          bash compile.sh ${{ matrix.arch }}
+
+      - name: Create Windows Installer
+        run: |
+          cd ardour
+          XARCH=${{ matrix.arch }} ROOT=/home/ardour TMPDIR=/var/tmp SRCCACHE=/var/tmp/winsrc \
+            bash tools/x-win/package.sh
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ardour-Windows-${{ matrix.warch }}-Installer
+          path: /var/tmp/Ardour-*-${{ matrix.warch }}-Setup.exe
+          retention-days: 30
+
+      - name: Upload Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.warch }}
+          path: |
+            ardour/build/config.log
+          retention-days: 7
