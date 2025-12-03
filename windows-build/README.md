@@ -1,167 +1,235 @@
-# Ardour Windows Build Guide
+# Ardour Windows Build System
 
-This directory contains all the necessary scripts and documentation to build Ardour for Windows 11 using cross-compilation from Linux.
+This directory contains scripts for building Ardour DAW on Windows 11 using MSYS2/MinGW-w64.
 
-## Overview
+## Prerequisites
 
-Building Ardour for Windows is a multi-step process:
-
-1. **Build the dependency stack** - All required libraries (GTK+, audio libraries, etc.)
-2. **Build Ardour** - The main application
-3. **Package** - Create a Windows installer
+- **Windows 10/11** (64-bit)
+- **~20 GB free disk space** for MSYS2, dependencies, and build files
+- **Internet connection** for downloading packages
+- **PowerShell 5.0+** (included with Windows 10/11)
 
 ## Quick Start
 
-### Using GitHub Actions (Recommended)
+### Option 1: Automated Setup (Recommended)
 
-The easiest way to build Ardour for Windows is using GitHub Actions. This repository includes workflows that automate the entire process.
+1. Open PowerShell as Administrator
+2. Run the setup script:
+   ```powershell
+   cd C:\dev\myardour\windows-build
+   Set-ExecutionPolicy Bypass -Scope Process -Force
+   .\setup-msys2.ps1
+   ```
+3. After setup completes, run the build:
+   ```batch
+   build.bat
+   ```
 
-1. Go to the "Actions" tab in this repository
-2. Select "Build Ardour for Windows"
-3. Click "Run workflow"
-4. Download the artifact when complete
+### Option 2: Manual Setup
 
-### Manual Build (Advanced)
+1. **Install MSYS2** from https://www.msys2.org/
+   - Download and run the installer
+   - Install to `C:\msys64` (default location)
 
-For manual builds, see the detailed instructions below.
+2. **Update MSYS2** packages:
+   ```bash
+   # Open MSYS2 MinGW64 shell and run:
+   pacman -Syu
+   pacman -Su
+   ```
 
-## System Requirements
+3. **Install dependencies**:
+   ```bash
+   # In MSYS2 MinGW64 shell:
+   cd /c/dev/myardour/windows-build
+   bash install-deps.sh
+   ```
 
-### For Cross-Compilation (Linux)
-- Ubuntu 20.04+ or Debian Buster+
-- At least 16GB RAM
-- At least 50GB free disk space
-- Internet connection for downloading dependencies
-
-### Target System (Windows)
-- Windows 10 or Windows 11 (64-bit recommended)
-- At least 4GB RAM
-- Audio interface with ASIO or WASAPI support
-
-## Dependencies Overview
-
-The Windows build requires approximately 50+ libraries to be cross-compiled:
-
-### Core Libraries
-- GTK+ 2.24 (GUI toolkit)
-- GLib 2.64 (Core library)
-- Pango 1.42 (Text rendering)
-- Cairo 1.16 (2D graphics)
-
-### Audio Libraries
-- PortAudio (Audio I/O with ASIO/WASAPI support)
-- libsndfile (Audio file I/O)
-- libsamplerate (Sample rate conversion)
-- JACK (Audio connection kit)
-- FLAC, Vorbis, OGG (Audio codecs)
-
-### Plugin Support
-- LV2 (lilv, sord, serd, sratom, suil)
-- LADSPA
-- VAMP (Audio analysis plugins)
-- VST2/VST3 (Windows native plugins)
-
-### Other Dependencies
-- Boost 1.68
-- FFTw3 (Fast Fourier Transform)
-- RubberBand (Time stretching)
-- taglib (Audio metadata)
-- curl (Network support)
-- And many more...
-
-## Build Process Details
-
-### Step 1: Set Up Build Environment
-
-```bash
-# Install required packages (Ubuntu/Debian)
-sudo apt-get update
-sudo apt-get install -y \
-    mingw-w64 g++-mingw-w64 gcc-mingw-w64 \
-    build-essential autoconf automake libtool pkg-config \
-    yasm nasm git cmake nsis wget curl ca-certificates \
-    rsync zip unzip gettext meson python3
-
-# Configure MinGW for POSIX threads (required for C++11)
-sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
-sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
-```
-
-### Step 2: Build Dependency Stack
-
-The dependency stack takes several hours to build. Use the provided script:
-
-```bash
-sudo ./build-deps.sh x86_64
-```
-
-This creates a complete Windows development environment in `/home/ardour/win-stack-w64/`.
-
-### Step 3: Compile Ardour
-
-```bash
-./compile.sh
-```
-
-This configures and builds Ardour using the waf build system.
-
-### Step 4: Create Windows Installer
-
-```bash
-./package.sh
-```
-
-This creates an NSIS installer: `Ardour-X.X.X-w64-Setup.exe`
+4. **Build Ardour**:
+   ```bash
+   bash build-all.sh
+   ```
 
 ## Build Scripts
 
-| Script | Description |
-|--------|-------------|
-| `build-deps.sh` | Builds all required dependencies |
-| `compile.sh` | Compiles Ardour itself |
-| `package.sh` | Creates Windows installer |
-| `build-all.sh` | Complete build in one command |
+| Script | Purpose |
+|--------|---------|
+| `setup-msys2.ps1` | PowerShell script to install/configure MSYS2 |
+| `install-deps.sh` | Install all required MSYS2 packages |
+| `configure.sh` | Configure Ardour build with waf |
+| `build.sh` | Compile Ardour |
+| `package.sh` | Create distributable package |
+| `build-all.sh` | Master script running all steps |
+| `build.bat` | Windows launcher for the build |
 
-## Build Times
+## Build Options
 
-Typical build times on a modern system:
+### Full Build
+```bash
+./build-all.sh
+```
 
-| Step | Time (approx) |
-|------|---------------|
-| Dependency stack | 4-8 hours |
-| Ardour compilation | 30-60 minutes |
-| Packaging | 10-20 minutes |
+### Debug Build
+```bash
+./build-all.sh --debug
+```
+
+### Clean Rebuild
+```bash
+./build-all.sh --clean
+```
+
+### Skip Steps
+```bash
+# Skip dependency installation (if already installed)
+./build-all.sh --skip-deps
+
+# Only rebuild (after making changes)
+./build-all.sh --build-only
+
+# Skip packaging
+./build-all.sh --skip-package
+```
+
+### Individual Steps
+```bash
+# Install dependencies only
+./install-deps.sh
+
+# Configure only
+./configure.sh
+
+# Build only
+./build.sh
+
+# Package only
+./package.sh
+```
+
+## Build Output
+
+After a successful build, you'll find:
+
+- **Package directory**: `../Export/Ardour-<version>-win64/`
+- **ZIP archive**: `../Export/Ardour-<version>-win64.zip`
+
+The package contains:
+- Ardour executable (`bin/ardour.exe`)
+- Required DLLs
+- GTK themes and configuration
+- Launcher script (`Ardour.bat`)
 
 ## Troubleshooting
 
-### Common Issues
+### MSYS2 Shell Issues
 
-1. **Missing ASIO SDK**: Download from Steinberg's website and place in the correct location
-2. **Out of memory**: Reduce parallel jobs with `MAKEFLAGS=-j2`
-3. **Network timeouts**: Re-run the script; downloads are cached
+**Problem**: Scripts fail with "must be run from MinGW64 shell"
 
-### Getting Help
+**Solution**: Make sure you're using the correct shell:
+- Use `C:\msys64\msys2_shell.cmd -mingw64` to start MinGW64 shell
+- Or run `build.bat` which handles this automatically
 
-- [Ardour Forums](https://discourse.ardour.org/)
-- [Ardour Development Docs](https://ardour.org/development.html)
+### Missing Dependencies
 
-## Files in This Directory
+**Problem**: Configuration fails with missing library errors
 
-- `README.md` - This file
-- `build-deps.sh` - Dependency build script
-- `compile.sh` - Ardour compilation script  
-- `package.sh` - Packaging script
-- `build-all.sh` - Complete automated build
-- `.github/workflows/` - GitHub Actions workflows
+**Solution**: Re-run dependency installation:
+```bash
+bash install-deps.sh
+```
 
-## Version Information
+### pkg-config Not Finding Libraries
 
-- **Ardour Version**: 9.0-rc1
-- **Target Platform**: Windows 10/11 (64-bit)
-- **Build Architecture**: x86_64-w64-mingw32
-- **Last Updated**: December 2025
+**Problem**: `pkg-config --exists <lib>` fails
+
+**Solution**: Ensure PKG_CONFIG_PATH is set:
+```bash
+export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:/mingw64/share/pkgconfig"
+```
+
+### Build Failures
+
+**Problem**: Compilation errors
+
+**Solution**:
+1. Check you have all dependencies installed
+2. Try a clean build: `./build-all.sh --clean`
+3. Check the build log in `ardour/build/config.log`
+
+### Out of Memory
+
+**Problem**: Compiler crashes during build
+
+**Solution**: Reduce parallel jobs:
+```bash
+JOBS=2 ./build.sh
+```
+
+## Dependencies
+
+The build requires approximately 100+ packages from MSYS2. Key dependencies include:
+
+### Build Tools
+- MinGW-w64 toolchain (GCC, G++, etc.)
+- Python 3
+- CMake, Meson, Ninja
+- pkg-config
+
+### Core Libraries
+- Boost
+- GLib 2 / GLibmm
+- libxml2 / libxslt
+- FFTW3
+
+### GUI (GTK2 Stack)
+- GTK+ 2.24
+- GTKmm 2.4
+- Cairo / Cairomm
+- Pango / Pangomm
+- ATK / ATKmm
+
+### Audio
+- libsndfile
+- libsamplerate
+- Rubberband
+- PortAudio
+- FLAC, Vorbis, Opus, LAME
+
+### Plugins
+- LV2, Lilv, Serd, Sord, Sratom, Suil
+- VAMP SDK
+- Aubio
+
+## Notes
+
+### Audio Backend
+
+This build uses **PortAudio** as the primary audio backend. JACK support is disabled by default as JACK on Windows requires separate installation and configuration.
+
+To enable JACK support (requires JACK2 installed):
+```bash
+WITH_JACK=yes ./configure.sh
+```
+
+### GTK Theming
+
+The build includes basic GTK theming. For better appearance, you may want to copy GTK themes from an official Ardour installation.
+
+### Performance
+
+- First build with dependencies: 1-2 hours
+- Subsequent builds: 20-40 minutes
+- Clean rebuild: 30-60 minutes
+
+Build time depends on your CPU and disk speed. Using an SSD significantly improves build times.
 
 ## License
 
-Ardour is licensed under the GNU General Public License v2 (GPLv2).
-See the main Ardour repository for complete license information.
+Ardour is licensed under GPL-2.0. See the Ardour source code for full license details.
+
+## References
+
+- [Ardour Official Site](https://ardour.org)
+- [Ardour GitHub](https://github.com/Ardour/ardour)
+- [MSYS2](https://www.msys2.org)
+- [Ardour Development](https://ardour.org/development.html)

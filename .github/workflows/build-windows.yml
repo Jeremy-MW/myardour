@@ -8,6 +8,7 @@ on:
     paths:
       - 'windows-build/**'
       - '.github/workflows/build-windows.yml'
+      - 'ardour/**'
   pull_request:
     branches:
       - main
@@ -16,27 +17,133 @@ on:
       - '.github/workflows/build-windows.yml'
   workflow_dispatch:
     inputs:
-      architecture:
-        description: 'Target architecture'
+      build_type:
+        description: 'Build type'
         required: true
-        default: 'x86_64'
+        default: 'release'
         type: choice
         options:
-          - x86_64
-          - i686
-
-env:
-  ARDOUR_VERSION: '9.0-rc1'
+          - release
+          - debug
+      skip_deps:
+        description: 'Skip dependency installation (use cache)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
-  build-windows:
-    name: Build Ardour for Windows (${{ matrix.arch }})
+  build-windows-msys2:
+    name: Build Ardour (MSYS2/MinGW64)
+    runs-on: windows-latest
+    timeout-minutes: 180  # 3 hours
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-meson
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-pip
+            mingw-w64-x86_64-python-setuptools
+
+      - name: Cache MSYS2 Packages
+        uses: actions/cache@v4
+        id: cache-msys2-pkgs
+        with:
+          path: |
+            D:/a/_temp/msys64/mingw64
+          key: msys2-mingw64-deps-v3-${{ hashFiles('windows-build/install-deps.sh') }}
+          restore-keys: |
+            msys2-mingw64-deps-v3-
+            msys2-mingw64-deps-
+
+      - name: Install Dependencies
+        if: steps.cache-msys2-pkgs.outputs.cache-hit != 'true' || github.event.inputs.skip_deps != 'true'
+        run: |
+          echo "Installing Ardour build dependencies..."
+          cd windows-build
+          bash install-deps.sh
+
+      - name: Verify Dependencies
+        run: |
+          echo "Verifying critical dependencies..."
+          echo "GCC version:"
+          gcc --version | head -1
+          echo ""
+          echo "pkg-config libraries:"
+          pkg-config --list-all | grep -E "gtk|cairo|glib|sndfile|sample|fftw|lilv" | head -20
+          echo ""
+          echo "Checking required libraries..."
+          for lib in gtk+-2.0 gtkmm-2.4 glib-2.0 cairo sndfile samplerate fftw3f lilv-0 rubberband portaudio-2.0; do
+            if pkg-config --exists $lib 2>/dev/null; then
+              echo "  [OK] $lib: $(pkg-config --modversion $lib)"
+            else
+              echo "  [MISSING] $lib"
+            fi
+          done
+
+      - name: Configure Ardour
+        run: |
+          cd windows-build
+          BUILD_TYPE=${{ github.event.inputs.build_type || 'release' }} bash configure.sh
+
+      - name: Build Ardour
+        run: |
+          cd windows-build
+          JOBS=${{ runner.arch == 'X64' && '4' || '2' }} bash build.sh
+
+      - name: Package Ardour
+        run: |
+          cd windows-build
+          bash package.sh
+
+      - name: Upload Windows Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ardour-Windows-x64
+          path: Export/Ardour-*-win64*
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Build Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            ardour/build/config.log
+            ardour/build/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Optional: Keep the cross-compile job for comparison/fallback
+  build-windows-crosscompile:
+    name: Build Ardour (Cross-compile from Linux)
     runs-on: ubuntu-22.04
-    timeout-minutes: 480  # 8 hours - dependency build takes a while
-    
+    timeout-minutes: 480  # 8 hours for cross-compile with deps
+    if: false  # Disabled by default - set to true to enable
+
     strategy:
       fail-fast: false
       matrix:
@@ -60,57 +167,33 @@ jobs:
             yasm nasm git cmake nsis wget curl ca-certificates \
             rsync zip unzip gettext meson python3 python-is-python3 \
             libglib2.0-dev ed subversion ocaml-nox gperf ccache
-          
+
           # Configure MinGW for POSIX threads
           sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix || true
           sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix || true
-          sudo update-alternatives --set i686-w64-mingw32-gcc /usr/bin/i686-w64-mingw32-gcc-posix || true
-          sudo update-alternatives --set i686-w64-mingw32-g++ /usr/bin/i686-w64-mingw32-g++-posix || true
 
       - name: Cache Dependency Stack
         uses: actions/cache@v4
         id: cache-deps
         with:
           path: |
-            /home/ardour/win-stack-w64
+            /home/ardour/win-stack-${{ matrix.warch }}
             /var/tmp/winsrc
-          key: ardour-win-deps-${{ matrix.arch }}-v2
+          key: ardour-xwin-deps-${{ matrix.arch }}-v3
           restore-keys: |
-            ardour-win-deps-${{ matrix.arch }}-
+            ardour-xwin-deps-${{ matrix.arch }}-
 
-      - name: Build Dependency Stack
-        if: steps.cache-deps.outputs.cache-hit != 'true'
+      - name: Build Using x-win Scripts
         run: |
-          sudo mkdir -p /home/ardour
-          sudo chmod 777 /home/ardour
-          sudo mkdir -p /var/tmp/winsrc
-          sudo chmod 777 /var/tmp/winsrc
-          cd windows-build
-          sudo bash build-deps.sh ${{ matrix.arch }}
-
-      - name: Compile Ardour
-        run: |
-          cd windows-build
-          bash compile.sh ${{ matrix.arch }}
-
-      - name: Create Windows Installer
-        run: |
-          cd ardour
-          XARCH=${{ matrix.arch }} ROOT=/home/ardour TMPDIR=/var/tmp SRCCACHE=/var/tmp/winsrc \
-            bash tools/x-win/package.sh
+          # This would use the official Ardour x-win cross-compile scripts
+          # Requires ardour-build-tools repository setup
+          echo "Cross-compile build not configured"
+          echo "See https://github.com/Ardour/ardour/tree/master/tools/x-win"
+          exit 1
 
       - name: Upload Windows Installer
         uses: actions/upload-artifact@v4
         with:
-          name: Ardour-Windows-${{ matrix.warch }}-Installer
+          name: Ardour-Windows-${{ matrix.warch }}-CrossCompile
           path: /var/tmp/Ardour-*-${{ matrix.warch }}-Setup.exe
           retention-days: 30
-
-      - name: Upload Build Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs-${{ matrix.warch }}
-          path: |
-            ardour/build/config.log
-          retention-days: 7

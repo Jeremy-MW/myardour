@@ -1,0 +1,43 @@
+# Build outputs
+Export/
+
+# IDE and editor files
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Python bytecode (from waf)
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Build artifacts that might appear outside submodule
+*.o
+*.obj
+*.dll
+*.exe
+*.so
+*.dylib
+*.a
+*.lib
+
+# But NOT the windows-build scripts - they are tracked
+# The windows-build/ directory contains our build system and should be committed
